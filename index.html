@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Настройки — собери слова</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="js/theme.js"></script>
+</head>
+<body>
+<div class="page">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">Aa</span>
+      <div>
+        <h1>Собери слова</h1>
+        <p class="sub">Тренировка словарного запаса английского языка</p>
+      </div>
+    </div>
+    <div class="buttons">
+      <button type="button" id="btn-theme" class="theme-toggle" title="Включить тёмную тему" aria-label="Тёмная тема">
+        <span class="theme-toggle-icon" id="theme-icon" aria-hidden="true">☀️</span>
+        <span class="theme-toggle-text" id="theme-text">Тёмная тема</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="columns">
+
+    <form id="settings-form" class="settings" autocomplete="off">
+
+      <section class="panel">
+        <h2>Режим</h2>
+        <p class="hint" id="mode-hint">Слово собирается цепочкой: каждая следующая буква — из соседней клетки.</p>
+        <div class="options mode-options">
+          <label class="option mode-option selected" id="mode-option-adjacent" data-mode="adjacent">
+            <input type="radio" name="mode" id="mode-adjacent" value="adjacent" checked>
+            <span class="option-title">Рядом</span>
+            <span class="option-hint">Буквы подряд, только из соседних клеток.</span>
+          </label>
+          <label class="option mode-option" id="mode-option-any" data-mode="any">
+            <input type="radio" name="mode" id="mode-any" value="any">
+            <span class="option-title">Любые</span>
+            <span class="option-hint">Любые буквы поля в любом порядке.</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Сложность</h2>
+        <div class="options level-options">
+          <label class="option level-option" id="level-option-easy" data-level="easy">
+            <input type="radio" name="difficulty" id="level-easy" value="easy">
+            <span class="option-title">Легко</span>
+          </label>
+          <label class="option level-option selected" id="level-option-normal" data-level="normal">
+            <input type="radio" name="difficulty" id="level-normal" value="normal" checked>
+            <span class="option-title">Средне</span>
+          </label>
+          <label class="option level-option" id="level-option-hard" data-level="hard">
+            <input type="radio" name="difficulty" id="level-hard" value="hard">
+            <span class="option-title">Сложно</span>
+          </label>
+        </div>
+        <p class="hint" id="level-summary">…</p>
+      </section>
+
+      <section class="panel">
+        <h2>Пресеты</h2>
+        <div class="options preset-options">
+          <label class="option preset-option selected" id="preset-option-1" data-preset="0">
+            <input type="radio" name="preset" id="preset-1" value="0" checked>
+            <span class="option-title">Пресет 1</span>
+            <span class="option-caption" id="preset-caption-1">…</span>
+          </label>
+          <label class="option preset-option" id="preset-option-2" data-preset="1">
+            <input type="radio" name="preset" id="preset-2" value="1">
+            <span class="option-title">Пресет 2</span>
+            <span class="option-caption" id="preset-caption-2">…</span>
+          </label>
+          <label class="option preset-option" id="preset-option-3" data-preset="2">
+            <input type="radio" name="preset" id="preset-3" value="2">
+            <span class="option-title">Пресет 3</span>
+            <span class="option-caption" id="preset-caption-3">…</span>
+          </label>
+        </div>
+        <p class="hint">
+          Изменения применяются сразу — сохранять их перед игрой не нужно.
+          Кнопка «Сохранить в пресет» запоминает текущие настройки в выбранной ячейке.
+        </p>
+      </section>
+
+      <details class="panel advanced" id="advanced">
+        <summary>Дополнительно</summary>
+
+        <div class="field">
+          <label for="roundSeconds">Время раунда, секунд</label>
+          <input type="number" id="roundSeconds" min="15" max="900" step="5">
+          <span class="hint">От 15 до 900 секунд.</span>
+        </div>
+
+        <div class="field">
+          <label for="rows">Размер поля</label>
+          <div class="inline">
+            <input type="number" id="rows" min="4" max="10" step="1" aria-label="Строк">
+            <span class="times">×</span>
+            <input type="number" id="cols" min="4" max="10" step="1" aria-label="Столбцов">
+          </div>
+          <span class="hint">От 4×4 до 10×10 клеток.</span>
+        </div>
+
+        <div class="field">
+          <label for="minWordLength">Длина слова</label>
+          <div class="inline">
+            <input type="number" id="minWordLength" min="3" max="6" step="1" aria-label="Минимум букв">
+            <span class="times">—</span>
+            <input type="number" id="maxWordLength" min="4" max="12" step="1" aria-label="Максимум букв">
+          </div>
+          <span class="hint">Слова короче минимума не принимаются.</span>
+        </div>
+
+        <div class="field">
+          <label for="fillMode">Как заполнять поле</label>
+          <select id="fillMode">
+            <option value="dictionary">Из слов словаря — на поле точно есть слова</option>
+            <option value="random">Полностью случайные буквы</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="seedWords">Сколько слов заложить</label>
+          <input type="number" id="seedWords" min="1" max="12" step="1">
+        </div>
+
+        <div class="field" id="diagonal-field">
+          <label for="allowDiagonal">Соседство по диагонали</label>
+          <input type="checkbox" id="allowDiagonal">
+          <span class="hint">Только для режима «Рядом»: 8 направлений вместо 4.</span>
+        </div>
+
+        <div class="field">
+          <label for="reuseLetters">Повтор буквы в слове</label>
+          <input type="checkbox" id="reuseLetters">
+          <span class="hint">Одну клетку можно использовать в слове несколько раз.</span>
+        </div>
+
+        <div class="field">
+          <label for="penaltyForWrong">Штраф за неверное слово, очков</label>
+          <input type="number" id="penaltyForWrong" min="0" max="5" step="1">
+          <span class="hint">0 — ошибки не наказываются.</span>
+        </div>
+
+        <div class="field">
+          <label>Очки за длину слова</label>
+          <span class="hint">Чем длиннее слово, тем больше очков.</span>
+        </div>
+        <div class="field" id="points-fields"></div>
+
+        <div class="field">
+          <label for="showFoundWords">Показывать список слов</label>
+          <input type="checkbox" id="showFoundWords">
+        </div>
+        <div class="field">
+          <label for="showHint">Показывать, сколько слов на поле</label>
+          <input type="checkbox" id="showHint">
+        </div>
+      </details>
+
+      <div class="buttons" id="actions">
+        <button type="button" id="btn-play" class="primary">Играть</button>
+        <button type="button" id="btn-save">💾 Сохранить в пресет 1</button>
+        <button type="button" id="btn-random">🎲 Случайно</button>
+        <button type="button" id="btn-reset">↺ Сброс настроек</button>
+      </div>
+      <div class="status" id="status"></div>
+    </form>
+
+    <aside>
+      <section class="panel">
+        <h2>Предпросмотр поля</h2>
+        <div class="board preview" id="preview-board"></div>
+        <p class="hint" id="preview-info">…</p>
+        <button type="button" id="btn-preview" class="small">Обновить</button>
+      </section>
+
+      <section class="panel">
+        <h2>Правила</h2>
+        <div id="rules-summary" class="rules"></div>
+      </section>
+    </aside>
+
+  </div>
+
+  <div class="page-foot" id="page-foot" aria-hidden="true"><span></span><span></span><span></span></div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/wordlist.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/game-core.js"></script>
+<script src="js/game-state.js"></script>
+<script src="js/settings-page.js"></script>
+</body>
+</html>

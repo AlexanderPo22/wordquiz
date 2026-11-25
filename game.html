@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Игра — собери слова</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="js/theme.js"></script>
+</head>
+<body>
+<div class="page">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">Aa</span>
+      <div>
+        <h1>Собери слова</h1>
+        <p class="sub" id="mode-badge">Режим: Рядом</p>
+      </div>
+    </div>
+    <div class="buttons">
+      <button type="button" id="btn-restart">Заново</button>
+      <a class="btn" href="index.html">Настройки</a>
+      <button type="button" id="btn-theme" class="theme-toggle" title="Включить тёмную тему" aria-label="Тёмная тема">
+        <span class="theme-toggle-icon" id="theme-icon" aria-hidden="true">☀️</span>
+        <span class="theme-toggle-text" id="theme-text">Тёмная тема</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="columns">
+
+    <div>
+      <div class="scorebar">
+        <div class="chip"><span class="chip-label">Очки</span> <span class="value" id="score">0</span><span class="flash" id="flash"></span></div>
+        <div class="chip"><span class="chip-label">Время</span> <span class="value timer" id="timer">0:00</span></div>
+        <div class="chip"><span class="chip-label">Слов</span> <span class="value" id="word-count">0</span></div>
+      </div>
+
+      <div class="board" id="board"></div>
+      <p class="hint" id="hint"></p>
+
+      <div class="message" id="message"></div>
+
+      <div class="wordline">
+        <div class="current-word" id="current-word"></div>
+        <div class="buttons">
+          <button type="button" id="btn-submit" class="primary">Добавить</button>
+          <button type="button" id="btn-undo">Убрать</button>
+          <button type="button" id="btn-clear">Очистить</button>
+        </div>
+      </div>
+      <p class="hint" id="how-to">
+        Кликайте по буквам: следующая буква должна быть соседней с предыдущей.
+        Повторный клик по последней букве убирает её. Enter — добавить слово, Esc — очистить.
+      </p>
+    </div>
+
+    <aside>
+      <section class="panel" id="found-panel">
+        <h2>Найденные слова <span class="count" id="found-count">0</span></h2>
+        <ul class="found-list" id="found-list"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>Правила</h2>
+        <div class="rules" id="rules"></div>
+      </section>
+    </aside>
+
+  </div>
+
+  <div class="page-foot" id="page-foot" aria-hidden="true"><span></span><span></span><span></span></div>
+</div>
+
+<div class="overlay" id="round-over" hidden>
+  <div class="dialog">
+    <h2 id="over-title">Раунд завершён</h2>
+    <div id="over-summary"></div>
+    <div id="over-words"></div>
+    <div class="buttons" style="margin-top:16px">
+      <button type="button" id="btn-again" class="primary">Играть снова</button>
+      <a class="btn" href="index.html" id="btn-settings-2">К настройкам</a>
+    </div>
+  </div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/wordlist.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/game-core.js"></script>
+<script src="js/game-state.js"></script>
+<script src="js/game-page.js"></script>
+</body>
+</html>
