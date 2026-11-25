@@ -860,6 +860,130 @@ check('режим «Любые»: слово из любых клеток при
   assert(anyGame.message.textContent.indexOf('принято') !== -1, 'нет сообщения о приёме');
 });
 
+/* ---------- 5b. Режим «Найди слово» ---------- */
+
+console.log('\n== Страница игры: режим «Найди слово» ==');
+
+const findPage = shim.loadPage(path.join(ROOT, 'game.html'));
+findPage.localStorage.setItem(Settings.STORAGE_KEY, JSON.stringify(Settings.normalize({
+  mode: 'find', difficulty: 'normal', findSeconds: 30, findBonus: 8,
+  rows: 6, cols: 6, minWordLength: 4, maxWordLength: 8,
+  showFoundWords: true, showHint: true
+})));
+
+delete require.cache[require.resolve(path.join(ROOT, 'js/game-page.js'))];
+require(path.join(ROOT, 'js/game-page.js'));
+
+const findGame = findPage.registry;
+
+function targetOf(registry) {
+  return String(registry['target-word'].textContent || '').toLowerCase();
+}
+
+let findWord = '';
+let findTimerBefore = 0;
+let findLettersBefore = '';
+let findReloaded = null;
+
+check('«Найди слово»: слово показано, и его буквы есть на поле', () => {
+  assertEqual(findGame['target-panel'].hidden, false, 'панель с загаданным словом скрыта');
+  assertEqual(game['target-panel'].hidden, true, 'в режиме «Рядом» панель должна быть скрыта');
+  const target = targetOf(findGame);
+  assert(target.length >= 4, 'слово не показано: ' + JSON.stringify(target));
+  const board = readBoardOf(findGame);
+  assert(cellsForWord(board, target), 'загаданное слово нельзя собрать из букв поля');
+  assert(findGame['mode-badge'].textContent.indexOf('Найди слово') !== -1, 'в шапке нет режима');
+  assert(findGame.rules.innerHTML.indexOf('Время на слово') !== -1, 'нет времени на слово в правилах');
+  assert(findGame.rules.innerHTML.indexOf('Добавка за слово') !== -1, 'нет добавки за слово в правилах');
+  assert(findGame.rules.innerHTML.indexOf('Диагонали') === -1, 'диагонали в этом режиме не важны');
+  assert(findGame['how-to'].textContent.indexOf('по порядку') !== -1, 'нет пояснения режима');
+  findTimerBefore = secondsOf(findGame.timer.textContent);
+  findLettersBefore = board.letters.join('');
+});
+
+check('«Найди слово»: чужая буква не принимается', () => {
+  const board = readBoardOf(findGame);
+  const first = targetOf(findGame).charAt(0);
+  const wrong = board.letters.findIndex(function (letter) { return letter !== first; });
+  assert(wrong !== -1, 'на поле нет ни одной другой буквы');
+  findGame.board.children[wrong].dispatch('click');
+  assertEqual(findGame['current-word'].textContent, '', 'чужая буква попала в слово');
+  assert(findGame.message.textContent.indexOf('не следующая') !== -1,
+    'нет пояснения: ' + JSON.stringify(findGame.message.textContent));
+  assert(findGame.board.children[wrong].classList.contains('invalid'), 'клетка не покраснела');
+});
+
+check('«Найди слово»: слово собирается из любых клеток и засчитывается', () => {
+  const board = readBoardOf(findGame);
+  const target = targetOf(findGame);
+  const path = cellsForWord(board, target);
+  assert(path, 'не нашлось клеток для слова ' + target);
+  clickCellsOf(findGame, path);
+  findWord = target;
+  assertEqual(findGame['current-word'].textContent, '', 'слово не сбросилось после находки');
+  assertEqual(findGame['found-count'].textContent, '1', 'слово не засчитано: ' + findGame.message.textContent);
+  assert(Number(findGame.score.textContent) > 0, 'очки не начислены');
+  assert(findGame.message.textContent.indexOf('найдено') !== -1,
+    'нет сообщения о находке: ' + JSON.stringify(findGame.message.textContent));
+  assertEqual(findGame['found-list'].children.length, 1, 'слово не попало в список найденных');
+});
+
+check('«Найди слово»: за находку добавляется время и меняются буквы', () => {
+  const after = secondsOf(findGame.timer.textContent);
+  assert(after >= findTimerBefore + 6, 'время не добавилось: было ' + findTimerBefore + ', стало ' + after);
+  const board = readBoardOf(findGame);
+  assert(board.letters.join('') !== findLettersBefore, 'буквы на поле не изменились');
+  const next = targetOf(findGame);
+  assert(next && next !== findWord, 'загаданное слово не сменилось: ' + next);
+  assert(cellsForWord(board, next), 'новое слово нельзя собрать из новых букв');
+});
+
+check('«Найди слово»: загаданное слово переживает обновление страницы', () => {
+  findReloaded = shim.loadPage(path.join(ROOT, 'game.html'));
+  copyStorage(findPage.localStorage, findReloaded.localStorage);
+  globalThis.location.search = '';
+  delete require.cache[require.resolve(path.join(ROOT, 'js/game-page.js'))];
+  require(path.join(ROOT, 'js/game-page.js'));
+  assertEqual(targetOf(findReloaded.registry), findGame['target-word'].textContent.toLowerCase(),
+    'загаданное слово потерялось при обновлении');
+  assertEqual(readBoardOf(findReloaded.registry).letters.join(''), readBoardOf(findGame).letters.join(''),
+    'поле потерялось при обновлении');
+  assertEqual(findReloaded.registry['found-count'].textContent, '1', 'найденное слово потерялось');
+});
+
+check('звук: работает без Web Audio и запоминает выбор', () => {
+  delete require.cache[require.resolve(path.join(ROOT, 'js/sound.js'))];
+  require(path.join(ROOT, 'js/sound.js'));
+  const Sound = globalThis.Sound;
+  assert(Sound, 'модуль звука не загрузился');
+  assertEqual(Sound.isOn(), true, 'звук должен быть включён по умолчанию');
+  // в Node нет AudioContext: все сигналы должны молча ничего не делать
+  Sound.click();
+  Sound.tick();
+  Sound.tick(true);
+  Sound.honk();
+  Sound.found();
+  Sound.wrong();
+  Sound.end();
+  Sound.setOn(false);
+  assertEqual(Sound.isOn(), false, 'выключение звука не запомнилось');
+  // подписи обновляет та страница, что сейчас открыта (после проверки выше — перезагруженная)
+  assertEqual(findReloaded.registry['sound-icon'].textContent, '🔇', 'значок не сменился на выключенный');
+  assertEqual(findReloaded.localStorage.getItem(Sound.KEY), 'off', 'выбор не попал в хранилище');
+  Sound.setOn(true);
+  assertEqual(findReloaded.registry['sound-icon'].textContent, '🔊', 'значок не вернулся');
+});
+
+check('страница настроек: карточка третьего режима и его поля', () => {
+  assert(settingsPage.registry['mode-find'], 'нет радиокнопки режима «Найди слово»');
+  assert(settingsPage.registry['mode-option-find'], 'нет карточки режима «Найди слово»');
+  assert(settingsPage.registry['findSeconds'], 'нет поля времени на слово');
+  assert(settingsPage.registry['findBonus'], 'нет поля добавки времени');
+  assert(settingsPage.registry['btn-sound'], 'нет кнопки звука в шапке');
+  assert(!settingsPage.registry['mode-option-find'].classList.contains('selected'),
+    'третий режим не должен быть выбран по умолчанию');
+});
+
 /* ---------- 6. Сохранение состояния ---------- */
 
 console.log('\n== Сохранение состояния при обновлении ==');

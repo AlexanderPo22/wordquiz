@@ -91,18 +91,25 @@ check('значения по умолчанию корректны', () => {
   assertEqual(d.mode, 'adjacent', 'режим по умолчанию');
   assertEqual(d.difficulty, 'normal', 'сложность по умолчанию');
 });
-check('режим игры: только два значения, мусор → «Рядом»', () => {
+check('режим игры: три значения, мусор → «Рядом»', () => {
   assertEqual(Settings.normalize({ mode: 'any' }).mode, 'any', 'any сохраняется');
+  assertEqual(Settings.normalize({ mode: 'find' }).mode, 'find', 'find сохраняется');
   assertEqual(Settings.normalize({ mode: 'adjacent' }).mode, 'adjacent', 'adjacent сохраняется');
   assertEqual(Settings.normalize({ mode: 'nonsense' }).mode, 'adjacent', 'мусор → adjacent');
   assertEqual(Settings.normalize({}).mode, 'adjacent', 'по умолчанию adjacent');
-  assertEqual(Settings.MODE_ORDER.length, 2, 'ровно два режима');
+  assertEqual(Settings.MODE_ORDER.length, 3, 'ровно три режима');
   for (const mode of Settings.MODE_ORDER) {
     assert(Settings.MODES[mode] && Settings.MODES[mode].title, 'нет названия режима ' + mode);
     assert(Settings.MODES[mode].hint, 'нет описания режима ' + mode);
   }
-  // в режиме «любые» диагональ не важна и всегда считается включённой
+  // там, где соседство клеток не важно, диагональ считается включённой
   assertEqual(Settings.normalize({ mode: 'any', allowDiagonal: false }).allowDiagonal, true, 'диагональ в any');
+  assertEqual(Settings.normalize({ mode: 'find', allowDiagonal: false }).allowDiagonal, true, 'диагональ в find');
+  // у «Найди слово» свои, короткие настройки времени
+  assertEqual(Settings.normalize({ mode: 'find' }).findSeconds, 30, 'время на слово по умолчанию');
+  assertEqual(Settings.normalize({ mode: 'find' }).findBonus, 8, 'добавка по умолчанию');
+  assertEqual(Settings.normalize({ mode: 'find', findSeconds: 5 }).findSeconds, 10, 'слишком короткое время зажато');
+  assertEqual(Settings.normalize({ mode: 'find', findSeconds: 5000 }).findSeconds, 120, 'слишком длинное время зажато');
 });
 check('уровни сложности задают готовые наборы настроек', () => {
   assertEqual(Settings.DIFFICULTY_ORDER.length, 3, 'три уровня');
@@ -172,7 +179,7 @@ check('randomize всегда даёт валидные настройки', () 
     modes.add(s.mode);
     levels.add(s.difficulty);
   }
-  assertEqual(modes.size, 2, 'случайный режим должен встречаться оба');
+  assertEqual(modes.size, 3, 'случайный режим должен встречаться все три');
   assertEqual(levels.size, 3, 'случайная сложность должна встречаться все три');
 });
 check('reset возвращает значения по умолчанию', () => {

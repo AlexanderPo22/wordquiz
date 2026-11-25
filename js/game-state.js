@@ -47,7 +47,35 @@
       seeds = raw.seedWords.map(function (word) { return String(word).toLowerCase(); })
         .filter(function (word) { return WORD.test(word); });
     }
-    return { rows: rows, cols: cols, letters: letters, seedWords: seeds };
+
+    // Загаданное слово режима «Найди слово»: сохраняем, только если его
+    // действительно можно собрать из букв этого поля.
+    var target = null;
+    if (settings.mode === 'find') {
+      var wanted = String(raw.target === undefined ? '' : raw.target).toLowerCase();
+      if (WORD.test(wanted) && canBuild(letters, wanted, settings.reuseLetters)) target = wanted;
+    }
+
+    return { rows: rows, cols: cols, letters: letters, seedWords: seeds, target: target };
+  }
+
+  /** Есть ли на поле нужные буквы (каждой — не меньше, чем в слове). */
+  function canBuild(letters, word, reuseLetters) {
+    var counts = Object.create(null);
+    for (var i = 0; i < letters.length; i++) counts[letters[i]] = (counts[letters[i]] || 0) + 1;
+    if (reuseLetters) {
+      for (var j = 0; j < word.length; j++) {
+        if (!(counts[word.charAt(j)] > 0)) return false;
+      }
+      return true;
+    }
+    var need = Object.create(null);
+    for (var k = 0; k < word.length; k++) {
+      var ch = word.charAt(k);
+      need[ch] = (need[ch] || 0) + 1;
+      if (need[ch] > (counts[ch] || 0)) return false;
+    }
+    return true;
   }
 
   function normalizePath(raw, total, reuseLetters) {

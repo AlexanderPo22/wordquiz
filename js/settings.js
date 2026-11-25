@@ -6,6 +6,8 @@
 
   var LIMITS = {
     roundSeconds: { min: 15, max: 900, step: 5 },
+    findSeconds: { min: 10, max: 120, step: 5 },
+    findBonus: { min: 0, max: 60, step: 1 },
     cols: { min: 4, max: 10 },
     rows: { min: 4, max: 10 },
     minWordLength: { min: 3, max: 6 },
@@ -18,6 +20,8 @@
    * Главная настройка — режим игры.
    * adjacent — слово собирается по соседним клеткам (цепочкой).
    * any      — буквы можно брать из любых клеток в любом порядке.
+   * find     — слово загадано: его буквы ищут по всему полю, пока идёт время;
+   *            за найденное слово время добавляется, а буквы меняются.
    */
   var MODES = {
     adjacent: {
@@ -29,9 +33,15 @@
       title: 'Любые',
       short: 'любые буквы поля',
       hint: 'Буквы можно брать из любых клеток и в любом порядке — как из набора букв.'
+    },
+    find: {
+      title: 'Найди слово',
+      short: 'слово загадано',
+      hint: 'Слово загадано заранее: ищите его буквы по всему полю в любом порядке. ' +
+        'Нашлось — время добавляется, а буквы меняются.'
     }
   };
-  var MODE_ORDER = ['adjacent', 'any'];
+  var MODE_ORDER = ['adjacent', 'any', 'find'];
 
   /*
    * Уровни сложности — готовые наборы настроек.
@@ -40,14 +50,17 @@
   var DIFFICULTIES = {
     easy: {
       title: 'Легко', rows: 5, cols: 5, roundSeconds: 180,
+      findSeconds: 40, findBonus: 12,
       minWordLength: 3, maxWordLength: 6, seedWords: 6
     },
     normal: {
       title: 'Средне', rows: 6, cols: 6, roundSeconds: 120,
+      findSeconds: 30, findBonus: 8,
       minWordLength: 3, maxWordLength: 8, seedWords: 8
     },
     hard: {
       title: 'Сложно', rows: 7, cols: 7, roundSeconds: 90,
+      findSeconds: 25, findBonus: 6,
       minWordLength: 4, maxWordLength: 10, seedWords: 10
     }
   };
@@ -64,6 +77,8 @@
     mode: 'adjacent',
     difficulty: 'normal',
     roundSeconds: 120,
+    findSeconds: 30,
+    findBonus: 8,
     cols: 6,
     rows: 6,
     minWordLength: 3,
@@ -108,6 +123,8 @@
 
     var lim = LIMITS;
     out.roundSeconds = root.Util.toInt(src.roundSeconds, DEFAULTS.roundSeconds, lim.roundSeconds.min, lim.roundSeconds.max);
+    out.findSeconds = root.Util.toInt(src.findSeconds, DEFAULTS.findSeconds, lim.findSeconds.min, lim.findSeconds.max);
+    out.findBonus = root.Util.toInt(src.findBonus, DEFAULTS.findBonus, lim.findBonus.min, lim.findBonus.max);
     out.cols = root.Util.toInt(src.cols, DEFAULTS.cols, lim.cols.min, lim.cols.max);
     out.rows = root.Util.toInt(src.rows, DEFAULTS.rows, lim.rows.min, lim.rows.max);
     out.minWordLength = root.Util.toInt(src.minWordLength, DEFAULTS.minWordLength, lim.minWordLength.min, lim.minWordLength.max);
@@ -126,12 +143,12 @@
     out.showFoundWords = src.showFoundWords === undefined ? DEFAULTS.showFoundWords : !!src.showFoundWords;
     out.showHint = src.showHint === undefined ? DEFAULTS.showHint : !!src.showHint;
     out.fillMode = src.fillMode === 'random' ? 'random' : 'dictionary';
-    out.mode = src.mode === 'any' ? 'any' : 'adjacent';
+    out.mode = Object.prototype.hasOwnProperty.call(MODES, src.mode) ? src.mode : DEFAULTS.mode;
     out.difficulty = Object.prototype.hasOwnProperty.call(DIFFICULTIES, src.difficulty)
       ? src.difficulty
       : DEFAULTS.difficulty;
-    // В режиме «любые буквы» соседство по диагонали ни на что не влияет.
-    if (out.mode === 'any') out.allowDiagonal = true;
+    // Там, где соседство клеток не важно, диагональ ни на что не влияет.
+    if (out.mode !== 'adjacent') out.allowDiagonal = true;
     out.points = normalizePoints(src.points);
 
     return out;
@@ -224,6 +241,8 @@
       rows: preset.rows,
       cols: preset.cols,
       roundSeconds: preset.roundSeconds,
+      findSeconds: preset.findSeconds,
+      findBonus: preset.findBonus,
       minWordLength: preset.minWordLength,
       maxWordLength: preset.maxWordLength,
       seedWords: preset.seedWords
@@ -243,18 +262,25 @@
   function matchesDifficulty(settings) {
     var preset = DIFFICULTIES[settings.difficulty];
     if (!preset) return false;
-    return settings.rows === preset.rows && settings.cols === preset.cols &&
-      settings.roundSeconds === preset.roundSeconds &&
+    var sameField = settings.rows === preset.rows && settings.cols === preset.cols &&
       settings.minWordLength === preset.minWordLength &&
       settings.maxWordLength === preset.maxWordLength;
+    if (!sameField) return false;
+    // В режиме «Найди слово» время раунда не используется — важно время на слово.
+    if (settings.mode === 'find') {
+      return settings.findSeconds === preset.findSeconds && settings.findBonus === preset.findBonus;
+    }
+    return settings.roundSeconds === preset.roundSeconds;
   }
 
   /** Подпись настроек одной строкой — для карточек пресетов. */
   function describeSettings(settings) {
     var s = normalize(settings);
     var level = matchesDifficulty(s) ? difficultyTitle(s.difficulty) : 'свои настройки';
-    return modeTitle(s.mode) + ' · ' + level + ' · ' + s.rows + '×' + s.cols +
-      ' · ' + root.Util.formatTime(s.roundSeconds);
+    var clock = s.mode === 'find'
+      ? root.Util.formatTime(s.findSeconds) + ' +' + s.findBonus + ' с'
+      : root.Util.formatTime(s.roundSeconds);
+    return modeTitle(s.mode) + ' · ' + level + ' · ' + s.rows + '×' + s.cols + ' · ' + clock;
   }
 
   /* ---------- Пресеты ---------- */
@@ -322,7 +348,7 @@
     var out = applyDifficulty(root.Util.merge(base || DEFAULTS, { mode: mode }), level);
     var extras = {
       allowDiagonal: rng() < 0.7,
-      reuseLetters: mode === 'any' ? false : rng() < 0.2,
+      reuseLetters: mode === 'adjacent' ? rng() < 0.2 : false,
       penaltyForWrong: rng() < 0.5 ? 0 : root.Util.randInt(rng, 1, 3),
       showFoundWords: true,
       showHint: rng() < 0.7,

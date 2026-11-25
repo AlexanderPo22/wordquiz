@@ -331,22 +331,24 @@ button.small { padding: 6px 12px; font-size: 14px; }
 
 button:disabled { color: var(--muted-2); background: var(--surface-3); cursor: default; }
 
-/* Переключатель темы: маленькая кнопка в шапке обеих страниц */
-.theme-toggle { padding: 8px 12px; }
+/* Переключатели темы и звука: маленькие кнопки в шапке обеих страниц */
+.theme-toggle, .sound-toggle { padding: 8px 12px; }
 
-.theme-toggle-icon {
+.theme-toggle-icon, .sound-toggle-icon {
   font-size: 15px;
   line-height: 1;
 }
 
-.theme-toggle-text { color: var(--muted); font-size: 14px; }
-.theme-toggle:hover .theme-toggle-text { color: var(--ink); }
+.theme-toggle-text, .sound-toggle-text { color: var(--muted); font-size: 14px; }
+.theme-toggle:hover .theme-toggle-text,
+.sound-toggle:hover .sound-toggle-text { color: var(--ink); }
 .theme-toggle[aria-pressed="true"] { background: var(--surface-2); border-color: var(--line-strong); }
-.theme-toggle-icon.pop { animation: pop 0.25s ease-out; }
+.sound-toggle[aria-pressed="false"] .sound-toggle-icon { opacity: 0.45; }
+.theme-toggle-icon.pop, .sound-toggle-icon.pop { animation: pop 0.25s ease-out; }
 
-/* На узком экране от кнопки остаётся только значок */
+/* На узком экране от кнопок остаются только значки */
 @media (max-width: 560px) {
-  .theme-toggle-text { display: none; }
+  .theme-toggle-text, .sound-toggle-text { display: none; }
 }
 
 .buttons { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -409,6 +411,23 @@ button:disabled { color: var(--muted-2); background: var(--surface-3); cursor: d
 .cell.selected { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .cell.last { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
+/* Режим «Рядом»: уже выбранные буквы выделяются заметно сильнее — плотная
+   заливка акцентом, второй контур и мягкое свечение.
+   Буква при этом остаётся обычного цвета: синяя на плотной синей заливке
+   читалась бы хуже (контраст падал бы с 3.97:1 до 3.9:1 в светлой теме),
+   а на заливке он, наоборот, растёт.
+   Порядок чтения прежний: текущая буква (.last) — сплошная заливка с
+   контрастной буквой, а красная подсветка ошибки (.invalid) по-прежнему
+   важнее выделения.
+   Селектор опирается на .allowed и .blocked: их ставит только режим «Рядом»,
+   поэтому в режиме «Любые» вид клеток не меняется. */
+.board:has(.cell.blocked, .cell.allowed) .cell.selected:not(.last):not(.invalid) {
+  background: rgba(var(--accent-rgb), 0.3);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent), 0 4px 10px rgba(var(--accent-rgb), 0.22);
+  color: var(--ink);
+}
+
 /* Порядковый номер буквы в слове */
 .cell.selected::after {
   content: attr(data-order);
@@ -449,6 +468,119 @@ button:disabled { color: var(--muted-2); background: var(--surface-3); cursor: d
 .board.preview { max-width: 300px; gap: 3px; margin-bottom: 12px; }
 .board.preview .cell { font-size: 12px; border-radius: 6px; box-shadow: none; cursor: default; }
 .board.preview .cell:hover { background: var(--card); border-color: var(--line); }
+
+/* ---------- Загаданное слово (режим «Найди слово») ---------- */
+
+.target {
+  position: relative;
+  margin: 0 0 14px;
+  padding: 12px 16px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.target[hidden] { display: none; }
+
+.target::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent) 0%, rgba(var(--accent-rgb), 0) 85%);
+  opacity: 0.7;
+}
+
+.target-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.target-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.target-bonus {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ok);
+  font-variant-numeric: tabular-nums;
+}
+
+.target-word {
+  margin: 4px 0 0;
+  font-size: clamp(22px, 7vw, 34px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  overflow-wrap: break-word;
+}
+
+.target-hint { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+
+/* Эпичное появление: слово влетает, панель подсвечивается полосой */
+.target-word.appear { animation: target-in 0.62s cubic-bezier(0.2, 0.9, 0.2, 1) both; }
+.target-bonus.appear { animation: bonus-in 0.7s ease-out both; }
+
+.target.appear::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg,
+    rgba(var(--accent-rgb), 0) 25%,
+    rgba(var(--accent-rgb), 0.16) 50%,
+    rgba(var(--accent-rgb), 0) 75%);
+  transform: translateX(-100%);
+  animation: target-sweep 0.9s ease-out both;
+  pointer-events: none;
+}
+
+@keyframes target-in {
+  0% { opacity: 0; transform: scale(0.72) translateY(-6px); letter-spacing: 0.4em; }
+  55% { opacity: 1; transform: scale(1.07); letter-spacing: 0.1em; }
+  100% { opacity: 1; transform: scale(1); letter-spacing: 0.1em; }
+}
+
+@keyframes bonus-in {
+  0% { opacity: 0; transform: translateY(6px) scale(0.8); }
+  35% { opacity: 1; transform: translateY(0) scale(1.18); }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes target-sweep {
+  from { transform: translateX(-100%); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+/* Поле обновляется «волной»: буквы влетают по очереди, по полю идёт кольцо */
+.cell.spawn {
+  animation: cell-spawn 0.5s cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+  animation-delay: calc(var(--i, 0) * 16ms);
+}
+
+.board.wave { animation: board-wave 0.75s ease-out both; }
+
+@keyframes cell-spawn {
+  0% { opacity: 0; transform: rotateX(80deg) scale(0.75); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes board-wave {
+  0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.3); }
+  100% { box-shadow: 0 0 0 20px rgba(var(--accent-rgb), 0); }
+}
 
 /* ---------- Показания раунда ---------- */
 

@@ -7,8 +7,8 @@
 
   var POINT_KEYS = Settings.pointsKeys();
 
-  var MODE_IDS = { adjacent: 'mode-adjacent', any: 'mode-any' };
-  var MODE_OPTION_IDS = { adjacent: 'mode-option-adjacent', any: 'mode-option-any' };
+  var MODE_IDS = { adjacent: 'mode-adjacent', any: 'mode-any', find: 'mode-find' };
+  var MODE_OPTION_IDS = { adjacent: 'mode-option-adjacent', any: 'mode-option-any', find: 'mode-option-find' };
   var LEVEL_IDS = { easy: 'level-easy', normal: 'level-normal', hard: 'level-hard' };
   var LEVEL_OPTION_IDS = { easy: 'level-option-easy', normal: 'level-option-normal', hard: 'level-option-hard' };
 
@@ -29,7 +29,7 @@
   var presets = null;
 
   var SIMPLE_FIELDS = [
-    'roundSeconds', 'penaltyForWrong', 'rows', 'cols', 'seedWords',
+    'roundSeconds', 'findSeconds', 'findBonus', 'penaltyForWrong', 'rows', 'cols', 'seedWords',
     'minWordLength', 'maxWordLength', 'fillMode'
   ];
   var CHECKBOXES = ['allowDiagonal', 'reuseLetters', 'showFoundWords', 'showHint'];
@@ -99,19 +99,32 @@
     });
   }
 
-  /** В режиме «Любые» диагональ не имеет смысла — прячем настройку. */
+  /** Настройки, которые зависят от режима: диагональ и время «Найди слово». */
   function updateModeDependent(settings) {
-    var anyMode = settings.mode === 'any';
+    var findMode = settings.mode === 'find';
     modeHint.textContent = Settings.MODES[settings.mode].hint;
-    diagonalField.hidden = anyMode;
+    diagonalField.hidden = settings.mode !== 'adjacent';
+    var roundField = el('round-field');
+    var secondsField = el('find-seconds-field');
+    var bonusField = el('find-bonus-field');
+    // в «Найди слово» время раунда не используется — вместо него время на слово
+    if (roundField) roundField.hidden = findMode;
+    if (secondsField) secondsField.hidden = !findMode;
+    if (bonusField) bonusField.hidden = !findMode;
   }
 
   function updateLevelSummary(settings) {
+    var findMode = settings.mode === 'find';
     if (Settings.matchesDifficulty(settings)) {
-      levelSummary.textContent = Settings.describeDifficulty(settings.difficulty);
+      levelSummary.textContent = findMode
+        ? 'Поле ' + settings.rows + '×' + settings.cols + ' · ' +
+          window.Util.formatTime(settings.findSeconds) + ' на слово · +' + settings.findBonus + ' с за находку'
+        : Settings.describeDifficulty(settings.difficulty);
     } else {
       levelSummary.textContent = 'Свои значения: поле ' + settings.rows + '×' + settings.cols +
-        ' · ' + window.Util.formatTime(settings.roundSeconds) +
+        ' · ' + (findMode
+          ? window.Util.formatTime(settings.findSeconds) + ' на слово'
+          : window.Util.formatTime(settings.roundSeconds)) +
         ' · слова от ' + settings.minWordLength + ' до ' + settings.maxWordLength + ' букв.';
     }
   }
@@ -212,21 +225,29 @@
   /* ---------- Сводка правил ---------- */
 
   function updateRulesSummary(settings) {
+    var findMode = settings.mode === 'find';
     var rows = [
       'Режим: ' + Settings.modeTitle(settings.mode) + ' — ' + Settings.MODES[settings.mode].short,
       'Сложность: ' + Settings.difficultyTitle(settings.difficulty),
-      'Поле: ' + settings.rows + '×' + settings.cols + ' = ' + (settings.rows * settings.cols) + ' клеток',
-      'Время раунда: ' + window.Util.formatTime(settings.roundSeconds),
-      'Длина слова: от ' + settings.minWordLength + ' до ' + settings.maxWordLength + ' букв',
-      'Заполнение: ' + (settings.fillMode === 'dictionary'
-        ? 'из словаря (' + settings.seedWords + ' слов)'
-        : 'случайные буквы'),
-      'Штраф за ошибку: ' + settings.penaltyForWrong + ' очк.',
-      'Очки: ' + Settings.describePoints(settings.points)
+      'Поле: ' + settings.rows + '×' + settings.cols + ' = ' + (settings.rows * settings.cols) + ' клеток'
     ];
-    if (settings.mode !== 'any') {
-      rows.splice(5, 0, 'Диагонали: ' + (settings.allowDiagonal ? 'да' : 'нет'));
+    if (findMode) {
+      rows.push('Время на слово: ' + window.Util.formatTime(settings.findSeconds));
+      rows.push('Добавка за слово: +' + settings.findBonus + ' с');
+    } else {
+      rows.push('Время раунда: ' + window.Util.formatTime(settings.roundSeconds));
     }
+    rows.push('Длина слова: от ' + settings.minWordLength + ' до ' + settings.maxWordLength + ' букв');
+    if (settings.mode === 'adjacent') {
+      rows.push('Диагонали: ' + (settings.allowDiagonal ? 'да' : 'нет'));
+    }
+    if (!findMode) {
+      rows.push('Заполнение: ' + (settings.fillMode === 'dictionary'
+        ? 'из словаря (' + settings.seedWords + ' слов)'
+        : 'случайные буквы'));
+    }
+    rows.push('Штраф за ошибку: ' + settings.penaltyForWrong + ' очк.');
+    rows.push('Очки: ' + Settings.describePoints(settings.points));
     rulesSummary.innerHTML = rows.map(function (line) {
       return '<div>' + line + '</div>';
     }).join('');
@@ -259,6 +280,14 @@
     var rng = window.Util.makeRng((Math.random() * 0xffffffff) >>> 0);
     var board = GameCore.generateBoard(settings, rng);
     renderPreviewBoard(board);
+
+    // В «Найди слово» считается не число слов, а загаданное слово.
+    if (settings.mode === 'find') {
+      previewInfo.textContent = board.target
+        ? 'Загадано слово: ' + board.target.toUpperCase() + '. Его буквы лежат на поле — их и нужно найти.'
+        : 'Словарь не дал подходящего слова для такого поля.';
+      return;
+    }
 
     var started = Date.now();
     var result = GameCore.findAllWords(board, getTrie(settings), {

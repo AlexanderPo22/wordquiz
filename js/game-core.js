@@ -101,6 +101,44 @@
     return out;
   }
 
+  /** Режимы, где соседство клеток не важно: буквы берутся откуда угодно. */
+  function isFreeOrder(mode) {
+    return mode === 'any' || mode === 'find';
+  }
+
+  /**
+   * Слово для режима «Найди слово». Берём слова подлиннее: искать их интереснее,
+   * а короткие находятся слишком быстро.
+   */
+  function pickTargetWord(settings, rng, avoid) {
+    var dict = root.Dictionary;
+    if (!dict || !dict.byLength) return null;
+    var cells = settings.rows * settings.cols;
+    var maxLen = Math.min(settings.maxWordLength, cells, dict.maxLength || 15);
+    if (maxLen < 3) return null;
+    var minLen = Math.min(settings.minWordLength, maxLen);
+    var lo = Math.min(maxLen, Math.max(minLen, Math.ceil((minLen + maxLen) / 2)));
+    var guard = 80;
+    while (guard-- > 0) {
+      var len = root.Util.randInt(rng, lo, maxLen);
+      var bucket = dict.byLength[len];
+      if (!bucket || !bucket.length) continue;
+      var word = bucket[Math.floor(rng() * bucket.length)];
+      if (avoid && avoid[word] === true) continue;
+      return word;
+    }
+    return null;
+  }
+
+  /** Раскладывает загаданное слово по случайным клеткам: найти его можно всегда. */
+  function placeTargetWord(letters, settings, rng, avoid) {
+    var word = pickTargetWord(settings, rng, avoid);
+    if (!word) return null;
+    var order = root.Util.shuffle(rng, letters.map(function (unused, index) { return index; }));
+    for (var i = 0; i < word.length; i++) letters[order[i]] = word.charAt(i);
+    return word;
+  }
+
   /**
    * Режим «любые буквы»: слова не выкладываются цепочкой, а просто рассыпаются
    * по свободным клеткам — важно лишь, чтобы все их буквы были на поле.
@@ -127,9 +165,9 @@
 
   /**
    * Создаёт игровое поле.
-   * @returns {{rows:number, cols:number, letters:string[], seedWords:string[]}}
+   * @returns {{rows:number, cols:number, letters:string[], seedWords:string[], target:?string}}
    */
-  function generateBoard(settings, rng) {
+  function generateBoard(settings, rng, avoid) {
     var r = rng || Math.random;
     var s = root.Settings ? root.Settings.normalize(settings) : settings;
     var rows = s.rows;
@@ -137,9 +175,12 @@
     var letters = emptyGrid(rows, cols);
     var neighbors = neighborTable(rows, cols, s.allowDiagonal);
     var seedWords = [];
+    var target = null;
 
-    var maxPlaceable = Math.min(s.maxWordLength, 8, rows * cols);
-    if (s.fillMode === 'dictionary' && maxPlaceable >= s.minWordLength) {
+    if (s.mode === 'find') {
+      target = placeTargetWord(letters, s, r, avoid);
+    } else if (s.fillMode === 'dictionary' && Math.min(s.maxWordLength, 8, rows * cols) >= s.minWordLength) {
+      var maxPlaceable = Math.min(s.maxWordLength, 8, rows * cols);
       if (s.mode === 'any') {
         seedWords = scatterWords(letters, Math.min(s.seedWords, rows * cols), s.minWordLength, maxPlaceable, r);
       } else if (candidateWords(s, maxPlaceable).length) {
@@ -161,7 +202,7 @@
       if (letters[i] === null) letters[i] = randomLetter(r);
     }
 
-    return { rows: rows, cols: cols, letters: letters, seedWords: seedWords };
+    return { rows: rows, cols: cols, letters: letters, seedWords: seedWords, target: target };
   }
 
   /** Префиксное дерево словаря — нужно, чтобы быстро искать слова на поле. */
@@ -243,7 +284,7 @@
    */
   function findAllWords(board, trie, options) {
     var opts = options || {};
-    if (opts.mode === 'any') return findAllWordsFromLetters(board, opts);
+    if (isFreeOrder(opts.mode)) return findAllWordsFromLetters(board, opts);
     var total = board.rows * board.cols;
     var neighbors = neighborTable(board.rows, board.cols, opts.allowDiagonal !== false);
     var reuse = !!opts.reuseLetters;
@@ -301,15 +342,15 @@
   function isValidPath(board, path, options) {
     var opts = options || {};
     if (!path || !path.length) return false;
-    var anyMode = opts.mode === 'any';
-    var neighbors = anyMode ? null : neighborTable(board.rows, board.cols, opts.allowDiagonal !== false);
+    var freeOrder = isFreeOrder(opts.mode);
+    var neighbors = freeOrder ? null : neighborTable(board.rows, board.cols, opts.allowDiagonal !== false);
     var seen = Object.create(null);
     for (var i = 0; i < path.length; i++) {
       var cell = path[i];
       if (cell < 0 || cell >= board.letters.length) return false;
       if (!opts.reuseLetters && seen[cell] === true) return false;
       seen[cell] = true;
-      if (i === 0 || anyMode) continue;
+      if (i === 0 || freeOrder) continue;
       var prev = path[i - 1];
       if (neighbors[prev].indexOf(cell) === -1) return false;
     }
@@ -333,7 +374,7 @@
       return {
         ok: false,
         reason: 'bad-path',
-        message: opts.mode === 'any'
+        message: isFreeOrder(opts.mode)
           ? 'Слово должно состоять из букв поля, каждую клетку — один раз'
           : 'Буквы должны идти по соседним клеткам'
       };
@@ -349,6 +390,8 @@
     neighborTable: neighborTable,
     randomLetter: randomLetter,
     generateBoard: generateBoard,
+    isFreeOrder: isFreeOrder,
+    pickTargetWord: pickTargetWord,
     buildTrie: buildTrie,
     findAllWords: findAllWords,
     findAllWordsFromLetters: findAllWordsFromLetters,

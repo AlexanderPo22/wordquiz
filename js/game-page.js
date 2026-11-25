@@ -24,7 +24,10 @@
     overlay: document.getElementById('round-over'),
     overTitle: document.getElementById('over-title'),
     overSummary: document.getElementById('over-summary'),
-    overWords: document.getElementById('over-words')
+    overWords: document.getElementById('over-words'),
+    targetPanel: document.getElementById('target-panel'),
+    targetWord: document.getElementById('target-word'),
+    targetBonus: document.getElementById('target-bonus')
   };
 
   var state = {
@@ -38,6 +41,7 @@
     deadline: 0,
     timerId: null,
     active: false,
+    target: null,
     possible: { words: [], truncated: false }
   };
 
@@ -45,8 +49,32 @@
   var messageTimer = null;
   var invalidTimers = Object.create(null);
 
-  function isAnyMode() {
-    return !!state.settings && state.settings.mode === 'any';
+  function isFindMode() {
+    return !!state.settings && state.settings.mode === 'find';
+  }
+
+  /** Соседство клеток важно только в режиме «Рядом». */
+  function needsNeighbors() {
+    return !!state.settings && state.settings.mode === 'adjacent';
+  }
+
+  /*
+   * Звук подключается отдельным скриптом и читается в момент вызова:
+   * если его нет (старый браузер, тесты), игра просто молчит.
+   */
+  function play(name, arg) {
+    var api = window.Sound;
+    if (!api || typeof api[name] !== 'function') return;
+    try {
+      api[name](arg);
+    } catch (err) {
+      /* звук не должен ломать игру */
+    }
+  }
+
+  /** Сколько секунд даётся на старте: у «Найди слово» свой, короткий таймер. */
+  function startSeconds(settings) {
+    return settings.mode === 'find' ? settings.findSeconds : settings.roundSeconds;
   }
 
   /* ---------- Сохранение состояния ---------- */
@@ -65,7 +93,8 @@
         rows: state.board.rows,
         cols: state.board.cols,
         letters: state.board.letters.slice(),
-        seedWords: state.board.seedWords.slice()
+        seedWords: state.board.seedWords.slice(),
+        target: state.target || null
       },
       path: state.path.slice(),
       found: state.found.map(function (entry) {
@@ -112,37 +141,132 @@
       'Режим: ' + Settings.modeTitle(s.mode),
       'Сложность: ' + Settings.difficultyTitle(s.difficulty),
       'Поле: ' + s.rows + '×' + s.cols,
-      'Время: ' + window.Util.formatTime(s.roundSeconds),
-      'Длина слова: от ' + s.minWordLength + ' до ' + s.maxWordLength + ' букв',
-      'Штраф за ошибку: ' + s.penaltyForWrong,
-      'Очки: ' + Settings.describePoints(s.points)
+      isFindMode()
+        ? 'Время на слово: ' + window.Util.formatTime(s.findSeconds)
+        : 'Время: ' + window.Util.formatTime(s.roundSeconds),
+      'Длина слова: от ' + s.minWordLength + ' до ' + s.maxWordLength + ' букв'
     ];
-    if (!isAnyMode()) rows.splice(6, 0, 'Диагонали: ' + (s.allowDiagonal ? 'да' : 'нет'));
+    if (needsNeighbors()) rows.push('Диагонали: ' + (s.allowDiagonal ? 'да' : 'нет'));
+    if (isFindMode()) rows.push('Добавка за слово: +' + s.findBonus + ' с');
+    rows.push('Штраф за ошибку: ' + s.penaltyForWrong);
+    rows.push('Очки: ' + Settings.describePoints(s.points));
     els.rules.innerHTML = rows.map(function (line) { return '<div>' + line + '</div>'; }).join('');
   }
 
   function updateHowTo() {
     els.modeBadge.textContent = 'Режим: ' + Settings.modeTitle(state.settings.mode) +
       ' · ' + Settings.difficultyTitle(state.settings.difficulty);
-    els.howTo.textContent = isAnyMode()
-      ? 'Кликайте по любым буквам поля в любом порядке. Повторный клик по последней букве убирает её. ' +
-        'Enter — добавить слово, Backspace — убрать букву, Esc — очистить.'
-      : 'Кликайте по буквам: следующая буква должна быть соседней с предыдущей. ' +
+    if (isFindMode()) {
+      els.howTo.textContent = 'Соберите загаданное слово: нажимайте его буквы по порядку — соседство клеток не важно. ' +
+        'За найденное слово добавляется время, а буквы на поле меняются. ' +
+        'Повторный клик по последней букве убирает её, Backspace — тоже, Esc — очистить.';
+    } else if (state.settings.mode === 'any') {
+      els.howTo.textContent = 'Кликайте по любым буквам поля в любом порядке. Повторный клик по последней букве убирает её. ' +
+        'Enter — добавить слово, Backspace — убрать букву, Esc — очистить.';
+    } else {
+      els.howTo.textContent = 'Кликайте по буквам: следующая буква должна быть соседней с предыдущей. ' +
         'Повторный клик по последней букве убирает её. Enter — добавить слово, Backspace — убрать букву, Esc — очистить.';
+    }
   }
 
   /* ---------- Поле ---------- */
 
-  function renderBoard() {
+  /**
+   * Рисует поле. В режиме «Найди слово» клетки появляются по очереди —
+   * задержка задаётся переменной --i, поэтому «эпичность» целиком в CSS.
+   */
+  function renderBoard(spawn) {
     els.board.style.setProperty('--cols', state.board.cols);
     els.board.innerHTML = '';
+    var animate = spawn && isFindMode();
     state.board.letters.forEach(function (letter, index) {
       var cell = document.createElement('div');
       cell.className = 'cell';
       cell.setAttribute('data-index', String(index));
       cell.textContent = letter;
+      if (animate) {
+        cell.classList.add('spawn');
+        cell.style.setProperty('--i', String(index));
+      }
       els.board.appendChild(cell);
     });
+    if (animate) {
+      els.board.classList.remove('wave');
+      void els.board.offsetWidth;
+      els.board.classList.add('wave');
+    }
+  }
+
+  /* ---------- Загаданное слово (режим «Найди слово») ---------- */
+
+  /** Показывает загаданное слово и запускает его появление. */
+  function showTarget(word, bonus) {
+    state.target = word || null;
+    if (!els.targetPanel) return;
+    els.targetPanel.hidden = !isFindMode();
+    if (!isFindMode()) return;
+    els.targetWord.textContent = (word || '').toUpperCase();
+    if (els.targetBonus) els.targetBonus.textContent = bonus > 0 ? '+' + bonus + ' с' : '';
+    els.targetWord.classList.remove('appear');
+    if (els.targetBonus) els.targetBonus.classList.remove('appear');
+    els.targetPanel.classList.remove('appear');
+    void els.targetWord.offsetWidth;
+    els.targetWord.classList.add('appear');
+    els.targetPanel.classList.add('appear');
+    if (els.targetBonus && bonus > 0) els.targetBonus.classList.add('appear');
+  }
+
+  /** Следующая буква загаданного слова — единственная, которую можно взять. */
+  function isNextTargetLetter(index) {
+    var letter = state.board.letters[index];
+    var expected = state.target ? state.target.charAt(state.path.length) : '';
+    return letter === expected;
+  }
+
+  /** Слово собрано целиком? В этом режиме оно проверяется само, по ходу набора. */
+  function checkTarget() {
+    if (!state.target) return false;
+    var word = GameCore.wordFromPath(state.board, state.path);
+    if (word !== state.target) return false;
+    completeTarget();
+    return true;
+  }
+
+  /** Слово найдено: очки, добавка времени, новые буквы и новое слово. */
+  function completeTarget() {
+    var word = state.target;
+    if (!word) return;
+    var bonus = state.settings.findBonus;
+    var points = Settings.pointsForLength(word.length, state.settings.points);
+
+    state.foundSet[word] = true;
+    state.found.push({ word: word, points: points });
+    state.score += points;
+    updateScore();
+    flashScore(points);
+    renderFound();
+    play('found');
+
+    if (bonus > 0) {
+      state.deadline += bonus * 1000;
+      renderTimer();
+    }
+    state.path = [];
+    nextTarget(bonus);
+    saveState();
+    setMessage('«' + word.toUpperCase() + '» найдено: +' + points + ' очк.' +
+      (bonus > 0 ? ' и +' + bonus + ' с' : ''), true);
+  }
+
+  /** Новое поле с новым загаданным словом; уже найденные слова не повторяем. */
+  function nextTarget(bonus) {
+    var board = GameCore.generateBoard(state.settings, null, state.foundSet);
+    if (!board || !board.target) return; // словарь не дал слово — поле остаётся прежним
+    state.board = board;
+    renderBoard(true);
+    showTarget(board.target, bonus);
+    play('honk');
+    refreshSelection();
   }
 
   function cellElement(index) {
@@ -173,7 +297,7 @@
     });
 
     // В режиме «Рядом» приглушаем всё, что уже нельзя выбрать.
-    if (!isAnyMode() && state.path.length) {
+    if (needsNeighbors() && state.path.length) {
       for (i = 0; i < total; i++) {
         var other = cellElement(i);
         if (!other) continue;
@@ -187,7 +311,7 @@
 
   /** Какие клетки можно взять следующей буквой: только для режима «Рядом». */
   function allowedNextCells() {
-    if (!state.active || !state.path.length || isAnyMode()) return [];
+    if (!state.active || !state.path.length || !needsNeighbors()) return [];
     var last = state.path[state.path.length - 1];
     var table = GameCore.neighborTable(state.board.rows, state.board.cols, state.settings.allowDiagonal);
     return table[last].filter(function (index) {
@@ -281,18 +405,28 @@
     }
     if (!state.settings.reuseLetters && state.path.indexOf(index) !== -1) {
       pulseInvalid(index);
+      play('wrong');
       setMessage('Эту букву уже использовали. Нажмите на неё дважды, чтобы убрать.');
       return;
     }
-    if (!isAnyMode() && state.path.length && !isAdjacent(state.path[state.path.length - 1], index)) {
+    if (needsNeighbors() && state.path.length && !isAdjacent(state.path[state.path.length - 1], index)) {
       pulseInvalid(index);
+      play('wrong');
       setMessage('Буквы можно брать только из соседних клеток.');
+      return;
+    }
+    if (isFindMode() && !isNextTargetLetter(index)) {
+      pulseInvalid(index);
+      play('wrong');
+      setMessage('Это не следующая буква загаданного слова.');
       return;
     }
     state.path.push(index);
     setMessage('');
     refreshSelection();
     popCell(index);
+    // в «Найди слово» слово проверяется сразу, по последней букве
+    if (isFindMode() && checkTarget()) return;
     saveState();
   }
 
@@ -316,11 +450,20 @@
       setMessage('Сначала выберите буквы.');
       return;
     }
+    // В «Найди слово» словарь не нужен: проверяется только загаданное слово.
+    if (isFindMode()) {
+      if (checkTarget()) return;
+      shakeWord();
+      play('wrong');
+      setMessage('Это не загаданное слово.');
+      return;
+    }
     var word = GameCore.wordFromPath(state.board, state.path);
     var check = GameCore.validateWord(word, state.board, state.path, pathOptions());
 
     if (!check.ok) {
       shakeWord();
+      play('wrong');
       if (state.settings.penaltyForWrong > 0) {
         state.score = Math.max(0, state.score - state.settings.penaltyForWrong);
         updateScore();
@@ -332,6 +475,7 @@
     }
     if (state.foundSet[word] === true) {
       shakeWord();
+      play('wrong');
       setMessage('Слово «' + word.toUpperCase() + '» уже найдено.');
       return;
     }
@@ -343,6 +487,7 @@
     updateScore();
     flashScore(points);
     renderFound();
+    play('found');
     setMessage('«' + word.toUpperCase() + '» принято: +' + points, true);
     state.path = [];
     refreshSelection();
@@ -358,13 +503,20 @@
     return countText + ' ' + window.Util.plural(n, 'слово', 'слова', 'слов');
   }
 
-  function tick() {
+  function renderTimer() {
     var remaining = Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000));
     els.timer.textContent = window.Util.formatTime(remaining);
     els.timer.classList.toggle('low', remaining <= 15);
+    return remaining;
+  }
+
+  function tick() {
+    var remaining = renderTimer();
     // сохраняем раз в секунду, чтобы обновление страницы почти не теряло время
     if (state.active && remaining !== lastTickSecond) {
       lastTickSecond = remaining;
+      // тиканье — только в режиме на время: в долгих раундах оно мешает
+      if (isFindMode() && remaining > 0) play('tick', remaining <= 5);
       saveState();
     }
     if (remaining <= 0) {
@@ -376,16 +528,27 @@
   function setupRound(settings, board, saved) {
     state.settings = settings;
     state.board = board;
-    state.trie = GameCore.buildTrie(window.Dictionary.words, settings.minWordLength, settings.maxWordLength);
     state.path = saved ? saved.path.slice() : [];
     state.found = saved ? saved.found.slice() : [];
     state.foundSet = Object.create(null);
     state.found.forEach(function (entry) { state.foundSet[entry.word] = true; });
     state.score = saved ? saved.score : 0;
     state.active = true;
-    state.deadline = Date.now() + (saved ? saved.remaining : settings.roundSeconds) * 1000;
+    state.deadline = Date.now() + (saved ? saved.remaining : startSeconds(settings)) * 1000;
+    state.target = isFindMode() ? (board.target || null) : null;
 
-    renderBoard();
+    // В «Найди слово» поле без загаданного слова не годится: так бывает
+    // со старым сохранением или если словарь не дал подходящего слова.
+    if (isFindMode() && !state.target) {
+      var fresh = GameCore.generateBoard(settings, null, state.foundSet);
+      if (fresh && fresh.target) {
+        state.board = fresh;
+        state.target = fresh.target;
+      }
+    }
+
+    renderBoard(!saved);
+    showTarget(state.target, 0);
     refreshSelection();
     // при восстановлении не подсвечиваем последнее слово как только что найденное
     renderFound(!saved);
@@ -395,21 +558,29 @@
     els.overlay.hidden = true;
     els.hint.textContent = '';
 
-    // Полный список слов поля — для подсказки и итогов.
-    state.possible = GameCore.findAllWords(state.board, state.trie, {
-      mode: state.settings.mode,
-      allowDiagonal: state.settings.allowDiagonal,
-      reuseLetters: state.settings.reuseLetters,
-      minLength: state.settings.minWordLength,
-      maxLength: state.settings.maxWordLength,
-      visitLimit: 600000
-    });
-    if (state.settings.showHint) {
-      els.hint.textContent = 'На этом поле можно собрать ' + possibleWordsText(state.possible) + '.' +
-        (state.board.seedWords.length
-          ? ' В поле заложено ' + state.board.seedWords.length + ' ' +
-            window.Util.plural(state.board.seedWords.length, 'слово', 'слова', 'слов') + '.'
-          : '');
+    if (isFindMode()) {
+      // Список всех слов поля здесь не нужен: ищем одно загаданное слово.
+      if (state.settings.showHint) {
+        els.hint.textContent = 'За найденное слово добавляется время, а буквы на поле меняются.';
+      }
+    } else {
+      state.trie = GameCore.buildTrie(window.Dictionary.words, settings.minWordLength, settings.maxWordLength);
+      // Полный список слов поля — для подсказки и итогов.
+      state.possible = GameCore.findAllWords(state.board, state.trie, {
+        mode: state.settings.mode,
+        allowDiagonal: state.settings.allowDiagonal,
+        reuseLetters: state.settings.reuseLetters,
+        minLength: state.settings.minWordLength,
+        maxLength: state.settings.maxWordLength,
+        visitLimit: 600000
+      });
+      if (state.settings.showHint) {
+        els.hint.textContent = 'На этом поле можно собрать ' + possibleWordsText(state.possible) + '.' +
+          (state.board.seedWords.length
+            ? ' В поле заложено ' + state.board.seedWords.length + ' ' +
+              window.Util.plural(state.board.seedWords.length, 'слово', 'слова', 'слов') + '.'
+            : '');
+      }
     }
 
     if (state.timerId) clearInterval(state.timerId);
@@ -463,9 +634,12 @@
     els.overTitle.textContent = 'Раунд завершён';
     els.overSummary.innerHTML = [
       '<div>Очки: <b>' + state.score + '</b></div>',
-      '<div>Найдено слов: <b>' + state.found.length + '</b> из ' + totalText + ' возможных</div>',
+      isFindMode()
+        ? '<div>Найдено слов: <b>' + state.found.length + '</b></div>'
+        : '<div>Найдено слов: <b>' + state.found.length + '</b> из ' + totalText + ' возможных</div>',
       '<div>Лучшее слово: <b>' + (best ? best.word.toUpperCase() + ' (+' + best.points + ')' : '—') + '</b></div>'
     ].join('');
+    play('end');
 
     var sorted = state.found.slice().sort(function (a, b) { return b.points - a.points || a.word.localeCompare(b.word); });
     var html = '';
